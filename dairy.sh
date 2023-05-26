@@ -7,13 +7,31 @@ dairy_enc()
 	local dir=$1
 	local files
 	local filename
-	files=$(ls "$dir")
+
+	if [ -d "$dir" ]; then
+		echo found dir $dir
+		files=$(ls "$dir")
+	else
+		if [ -f "$dir" ]; then
+			echo found file $dir
+			files=$1
+		else
+			echo "file/dir not found"
+			exit 0
+		fi
+	fi
+
 	pass=$2
 	enc_suffix=".enc"
 	
 	for file in $files
 	do
-		local path="$dir/$file"
+		if [ -f $dir ]; then
+			local path=$dir
+		else
+			local path="$dir/$file"
+		fi
+
 		if [ -d "$path" ]; then
 			dairy_enc "$path" $2
 		else
@@ -33,12 +51,28 @@ dairy_dec()
 	local dir=$1
 	local files
 	local file_name
-	files=$(ls "$dir")
 	pass=$2	
 	
+	if [ -d "$dir" ]; then
+		echo found dir $dir
+		files=$(ls "$dir")
+	else
+		if [ -f "$dir" ]; then
+			echo found file $dir
+			files=$1
+		else
+			echo "file/dir not found"
+			exit 0
+		fi
+	fi
+
 	for file in $files
 	do
-		local path="$dir/$file"
+		if [ -f $dir ]; then
+			local path=$dir
+		else
+			local path="$dir/$file"
+		fi
 		if [ -d "$path" ]; then
 			dairy_dec "$path" $2
 		else
