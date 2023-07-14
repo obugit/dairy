@@ -1,0 +1,499 @@
+###################################################################################
+rtt使用方法
+1、新建工程并进行编译
+打开env.exe
+cd F:\sdk\rtthread\rt-thread\bsp\stm32\stm32f103-fire-arbitrary
+scons编译
+编译的过程文件在F:\sdk\rtthread\rt-thread\bsp\stm32\stm32f103-fire-arbitrary\build
+默认都是用env里面自带的编译工具进行编译的
+
+生成别的项目用的工程
+scons --target=mdk4
+scons --target=mdk5
+scons --target=iar
+编译用的是rtconfig.py这个脚本
+
+2、配置
+menuconfig进行配置
+配置完成保存在rtconfig.h中，后续会重新根据这个脚本进行编译
+pkgs --update
+pkgs --upgrade
+这两个是进行本地包更新用的
+
+3、scons使用
+scons --target=mdk5     # 生成 mdk5 的工程
+scons -c                # 清除构建内容
+scons -s                # 不输出内部命令信息, 可以连着用比如 scons --target=mdk5 -s
+scons -jN               # 多线程编译
+scons --dist            # 输出BSP相关工程, 所有 bsp 相关源码都拷贝到 dist 目录下
+scons --verbose         # 显示编译参数
+
+根据生成的工程来进行一点一点调试，用两个编译器跟下载器都试下看，重新选择一个好一点的工程也行，如果用keil5也可以
+工程可以用source-insight来进行搭建就行，用keil也行，都是可以的
+这是rtt使用，直接编译完成后就可以用了
+#####################################################################################
+freertos使用方法
+（1）代码里面自己带有demo，可以从demo上开始尝试使用，这里基于std库的。
+（2）可以使用stm32cube生成的工程来进行使用，这是基于hal库的。
+（3）手动移植
+1、新建三个文件夹，一个是src，一个是port，port用来保存内存管理以及处理器架构相关代码，然后还有include文件夹
+然后是先整理好配置文件FreeRTOSConfig.h，将CORTEX_STM32F103_Keil放到自己的user目录里
+2、将配置文件跟源文件都整合到工程中，然后将头文件路径写进来
+3、修改freertos的配置文件，中断服务程序（systick的初始化以及中断服务先弄起）
+新的版本的流程：
+再components.c中的
+int $Sub$$main(void)
+{
+    rt_hw_interrupt_disable();
+    rtthread_startup();
+    return 0;
+}
+里面调用rtthread_startup，里面有rt_application_init的初始化，里面又调用了main
+班级初始化是在rt_hw_board_init中，在drv_common.c中，使用的串口版本是哪个？使用的bsp驱动是哪个，也是应用然后bsp然后hal层配置
+RT_USING_SERIAL
+文件包含，配置文件宏定义，以及源代码一些头文件的包含这些都是自动生成的吗
+！！！包括组件跟驱动的配置等
+#####################################################################################
+stm32cube使用方法
+从github或者stm32cube网站下载hal库
+建立一个hal库的工程，或者直接连同freertos一起弄了算了
+使用stm32cubemx 然后install/remove
+新建两个串口版本的freertos
+https://blog.csdn.net/luobeihai/article/details/126061553
+stm32f103主频是72M吗，还有systick
+######################################################################################
+hal库使用方法
+需要新建两个文档，从文档和软件上入手来开始实现，
+一个是hal库的使用方法
+STM32 F1系列HAL库使用手册文档翻译.pdf
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+先从串口入手弄，然后把外设大概过一下，最好是有个开发板可以弄，需要用到hal库
+启动文件跟system系统文件，中断跟时钟文件，-然后是配置文件
+it.c和it.h是关于中断的文件，system是系统初始化的文件，hal_conf是hal库的配置文件，可以配置一些外设，启动或者不启动
+整理好目录之后，创建好工程的目录，然后配置头文件路径跟设置一些配置
+配置宏定义，然后编译器版本，C99模式，hal库使用到了C99的语法，arm version6好像有些文件没法编译，可以使用arm version5进行编译
+arm也开发了属于自己的编译器了，后面需要用到再下载吧
+
+然后添加个人文件进行使用
+个人最简单的也是系统相关操作，延时操作，跟串口操作，把这个最简单的操作弄好后就是freertos了
+20230204：leafly要添加目录，然后在config中添加宏定义，然后在drv_common.c中添加调用
+已有驱动验证，没有驱动看从别的板子找过来用，或者自己写一些驱动
+问题点（1）：每次修改工程后需要重新修改keil的配置包括添加文件夹等，这个得看下怎么做，或者干脆就不用用keil来编译了，但是需要下载
+~~~~~~~~这个修改一下keil模板就可以了
+问题点（2）：把串口的协议给移植过来，看下这个协议要不要搞得复杂一些，还是简简单单就行了。
+问题点（3）：把一些外设包括存储的以及传感器跟时钟等一下东西给驱动一下，看自身芯片有没有，或者找别的芯片里拿。
+~~~~~~~~把应用放在application，把测试放在tests，把驱动放在devicedriver中
+问题点（4）：完善leafly要使用跟先似乎的一些东西
+~~~~~~~~这个已经初步将功能给添加进去了
+问题点（5）：把功能拆分成不同线程然后使用IPC进行通信，整体架构一下。
+问题点（6）使用git进行版本管理，把原始工程以及第一个版本工程给先建立好
+~~~~~~~~已经初步建立好了初始版本，并添加了stm32f103vb的板子
+
+串口，i2c, spi等那几个东西最好是整理一下，把hal，通用驱动部分，跟使用驱动部分都整理一下
+rt_hw_spi_device_attach/spi_configure/stm32_spi_init（drv_spi.c)->HAL_SPI_Init(stm32f1xx_hal_spi.c)
+
+rt_err_t rt_spi_send_then_recv(struct rt_spi_device *device,
+                               const void           *send_buf,
+                               rt_size_t             send_length,
+                               void                 *recv_buf,
+                               rt_size_t             recv_length)
+{
+    rt_err_t result;
+    struct rt_spi_message message;
+
+    RT_ASSERT(device != RT_NULL);
+    RT_ASSERT(device->bus != RT_NULL);
+
+    result = rt_mutex_take(&(device->bus->lock), RT_WAITING_FOREVER);
+    if (result == RT_EOK)
+    {
+        if (device->bus->owner != device)
+        {
+            /* not the same owner as current, re-configure SPI bus */
+            result = device->bus->ops->configure(device, &device->config);
+            if (result == RT_EOK)
+            {
+                /* set SPI bus owner */
+                device->bus->owner = device;
+            }
+            else
+            {
+                /* configure SPI bus failed */
+                result = -RT_EIO;
+                goto __exit;
+            }
+        }
+在发送接收函数里面有关于初始化的配置，比如device->bus->ops->configure
+####################################################################################
+帧头	2
+流水号		必须要的
+命令字		也是要的
+数据长度	必须要的
+数据体		也要
+校验	1
+帧尾	2	
+
+
+
+#ifndef RT_CONFIG_H__
+#define RT_CONFIG_H__
+
+/* Automatically generated file; DO NOT EDIT. */
+/* RT-Thread Configuration */
+
+/* RT-Thread Kernel */
+
+#define RT_NAME_MAX 8
+#define RT_ALIGN_SIZE 8
+#define RT_THREAD_PRIORITY_32
+#define RT_THREAD_PRIORITY_MAX 32
+#define RT_TICK_PER_SECOND 1000
+#define RT_USING_OVERFLOW_CHECK
+#define RT_USING_HOOK
+#define RT_HOOK_USING_FUNC_PTR
+#define RT_USING_IDLE_HOOK
+#define RT_IDLE_HOOK_LIST_SIZE 4
+#define IDLE_THREAD_STACK_SIZE 256
+
+/* kservice optimization */
+
+#define RT_DEBUG
+#define RT_DEBUG_COLOR
+
+/* Inter-Thread communication */
+
+#define RT_USING_SEMAPHORE
+#define RT_USING_MUTEX
+#define RT_USING_EVENT
+#define RT_USING_MAILBOX
+#define RT_USING_MESSAGEQUEUE
+
+/* Memory Management */
+
+#define RT_PAGE_MAX_ORDER 11
+#define RT_USING_MEMPOOL
+#define RT_USING_SMALL_MEM
+#define RT_USING_MEMHEAP
+#define RT_MEMHEAP_FAST_MODE
+#define RT_USING_SMALL_MEM_AS_HEAP
+#define RT_USING_HEAP
+
+/* Kernel Device Object */
+
+#define RT_USING_DEVICE
+#define RT_USING_DEVICE_OPS
+#define RT_USING_CONSOLE
+#define RT_CONSOLEBUF_SIZE 128
+#define RT_CONSOLE_DEVICE_NAME "uart1"
+#define RT_VER_NUM 0x50000
+#define RT_USING_CPU_FFS
+#define ARCH_ARM
+#define ARCH_ARM_CORTEX_M
+#define ARCH_ARM_CORTEX_M3
+
+/* RT-Thread Components */
+
+#define RT_USING_COMPONENTS_INIT
+#define RT_USING_USER_MAIN
+#define RT_MAIN_THREAD_STACK_SIZE 2048
+#define RT_MAIN_THREAD_PRIORITY 10
+#define RT_USING_MSH
+#define RT_USING_FINSH
+#define FINSH_USING_MSH
+#define FINSH_THREAD_NAME "tshell"
+#define FINSH_THREAD_PRIORITY 20
+#define FINSH_THREAD_STACK_SIZE 4096
+#define FINSH_USING_HISTORY
+#define FINSH_HISTORY_LINES 5
+#define FINSH_USING_SYMTAB
+#define FINSH_CMD_SIZE 80
+#define MSH_USING_BUILT_IN_COMMANDS
+#define FINSH_USING_DESCRIPTION
+#define FINSH_ARG_MAX 10
+#define RT_USING_DFS
+#define DFS_USING_POSIX
+#define DFS_USING_WORKDIR
+#define DFS_FILESYSTEMS_MAX 4
+#define DFS_FILESYSTEM_TYPES_MAX 4
+#define DFS_FD_MAX 16
+#define RT_USING_DFS_DEVFS
+
+/* Device Drivers */
+
+#define RT_USING_DEVICE_IPC
+#define RT_UNAMED_PIPE_NUMBER 64
+#define RT_USING_SERIAL
+#define RT_USING_SERIAL_V1
+#define RT_SERIAL_USING_DMA
+#define RT_SERIAL_RB_BUFSZ 64
+#define RT_USING_HWTIMER
+#define RT_USING_I2C
+#define RT_USING_I2C_BITOPS
+#define RT_USING_PIN
+#define RT_USING_ADC
+#define RT_USING_DAC
+#define RT_USING_NULL
+#define RT_USING_ZERO
+#define RT_USING_RANDOM
+#define RT_USING_PWM
+#define RT_USING_RTC
+#define RT_USING_SPI
+#define RT_USING_SFUD
+#define RT_SFUD_USING_SFDP
+#define RT_SFUD_USING_FLASH_INFO_TABLE
+#define RT_SFUD_SPI_MAX_HZ 50000000
+
+/* Using USB */
+
+
+/* C/C++ and POSIX layer */
+
+#define RT_LIBC_DEFAULT_TIMEZONE 8
+
+/* POSIX (Portable Operating System Interface) layer */
+
+
+/* Interprocess Communication (IPC) */
+
+
+/* Socket is in the 'Network' category */
+
+
+/* Network */
+
+
+/* Utilities */
+
+
+/* RT-Thread Utestcases */
+
+
+/* RT-Thread online packages */
+
+/* IoT - internet of things */
+
+
+/* Wi-Fi */
+
+/* Marvell WiFi */
+
+
+/* Wiced WiFi */
+
+
+/* IoT Cloud */
+
+
+/* security packages */
+
+
+/* language packages */
+
+
+/* multimedia packages */
+
+
+/* tools packages */
+
+
+/* system packages */
+
+
+/* peripheral libraries and drivers */
+
+#define PKG_USING_SENSORS_DRIVERS
+#define PKG_USING_MPU6XXX
+#define PKG_USING_MPU6XXX_LATEST_VERSION
+#define PKG_USING_MPU6XXX_ACCE
+#define PKG_USING_MPU6XXX_GYRO
+#define PKG_USING_MPU6XXX_MAG
+#define PKG_USING_AT24CXX
+#define PKG_USING_AT24CXX_LATEST_VERSION
+#define PKG_USING_I2C_TOOLS
+#define I2C_TOOLS_USE_SW_I2C
+#define I2C_TOOLS_SW_ACK_TIMEOUT 100
+#define PKG_USING_I2C_TOOLS_LATEST_VERSION
+#define PKG_USING_NRF24L01
+#define PKG_USING_NRF24L01_LATEST_VERSION
+#define PKG_NRF24L01_VERSION "latest"
+#define PKG_USING_RC522
+#define MFRC522_SPI_BUS_NAME "spi1"
+#define MFRC522_SPI_DEVICE_NAME "spi10"
+
+#define MFRC522_SS_PIN 	26				//PB10
+#define MFRC522_RST_PIN 27				//PB11
+
+#define PKG_USING_RC522_LATEST_VERSION
+
+/* miscellaneous packages */
+
+#define PKG_USING_KENDRYTE_DEMO
+#define PKG_USING_KENDRYTE_DEMO_V001
+#define KENDRYTE_DEMO_FLASH_W25QXX
+#define KENDRYTE_DEMO "flash_w25qxx"
+
+/* samples: kernel and components samples */
+
+#define PKG_USING_KERNEL_SAMPLES
+#define PKG_USING_KERNEL_SAMPLES_V030
+#define PKG_USING_FILESYSTEM_SAMPLES
+#define PKG_USING_FILESYSTEM_SAMPLES_V020
+#define PKG_USING_NETWORK_SAMPLES
+#define PKG_USING_NETWORK_SAMPLES_V030
+#define PKG_USING_PERIPHERAL_SAMPLES
+#define PKG_USING_PERIPHERAL_SAMPLES_V040
+#define SOC_FAMILY_STM32
+#define SOC_SERIES_STM32F1
+
+/* Hardware Drivers Config */
+
+#define SOC_STM32F103VB
+
+/* Onboard Peripheral Drivers */
+
+#define BSP_USING_USB_TO_USART
+#define BSP_USING_SPI_FLASH
+#define BSP_USING_EEPROM
+
+/* On-chip Peripheral Drivers */
+
+#define BSP_USING_GPIO
+#define BSP_USING_UART
+#define BSP_USING_UART1
+#define BSP_USING_UART2
+#define BSP_USING_UART3
+#define BSP_USING_ON_CHIP_FLASH
+#define BSP_USING_SPI
+#define BSP_USING_SPI1
+#define BSP_USING_SPI2
+#define BSP_USING_I2C1
+#define BSP_I2C1_SCL_PIN 22
+#define BSP_I2C1_SDA_PIN 23
+#define BSP_USING_TIM
+#define BSP_USING_TIM2
+#define BSP_USING_TIM3
+#define BSP_USING_TIM4
+#define BSP_USING_PWM
+#define BSP_USING_PWM3
+#define BSP_USING_PWM3_CH2
+#define BSP_USING_PWM3_CH3
+#define BSP_USING_PWM3_CH4
+#define BSP_USING_ADC
+#define BSP_USING_ADC1
+#define BSP_USING_ONCHIP_RTC
+#define BSP_RTC_USING_LSE
+
+#define RT_USING_LEAFLY
+#define RT_USING_TESTS
+#define RT_USING_TESTS_UART2_PROTO
+#define DC_USING_GY30
+#define RT_USING_TESTS_I2C
+/* Board extended module Drivers */
+
+
+#endif
+
+rt_spi_send_then_recv(rtt_dev->rt_spi_device, write_buf, write_size, read_buf, read_size)
+rtt_dev = (struct spi_flash_device *) (sfud_dev->user_data);
+sfud_flash *sfud_dev = (sfud_flash *) (spi->user_data);
+const sfud_spi *spi
+
+
+
+rt_sfud_flash_probe("w25q32", "spi10"))
+struct spi_flash_device
+{
+    struct rt_device                flash_device;
+    struct rt_device_blk_geometry   geometry;
+    struct rt_spi_device *          rt_spi_device;
+    struct rt_mutex                 lock;
+    void *                          user_data;
+};
+
+typedef struct spi_flash_device *rt_spi_flash_device_t;
+typedef struct {
+    char *name;                                  /**< serial flash name */
+    size_t index;                                /**< index of flash device information table  @see flash_table */
+    sfud_flash_chip chip;                        /**< flash chip information */
+    sfud_spi spi;                                /**< SPI device */
+    bool init_ok;                                /**< initialize OK flag */
+    bool addr_in_4_byte;                         /**< flash is in 4-Byte addressing */
+    struct {
+        void (*delay)(void);                     /**< every retry's delay */
+        size_t times;                            /**< default times for error retry */
+    } retry;
+    void *user_data;                             /**< some user data */
+
+#ifdef SFUD_USING_QSPI
+    sfud_qspi_read_cmd_format read_cmd_format;   /**< fast read cmd format */
+#endif
+
+#ifdef SFUD_USING_SFDP
+    sfud_sfdp sfdp;                              /**< serial flash discoverable parameters by JEDEC standard */
+#endif
+
+} sfud_flash, *sfud_flash_t;
+
+rtt_dev = (rt_spi_flash_device_t) rt_malloc(sizeof(struct spi_flash_device));
+sfud_dev = (sfud_flash_t) rt_malloc(sizeof(sfud_flash));
+rtt_dev->rt_spi_device = (struct rt_spi_device *) rt_device_find(spi_dev_name);
+rt_spi_configure(rtt_dev->rt_spi_device, spi_cfg);//rtt用的spi_device
+
+rtt_dev->user_data = sfud_dev;
+rtt_dev->rt_spi_device->user_data = rtt_dev;
+rtt_dev->flash_device.user_data = rtt_dev;
+sfud_dev->user_data = rtt_dev;
+
+（1）修改时钟后IAP变得正常，重新规划一下IAP
+（2）编译后还是比较大，需要再裁剪一下然后整成两个分区。
+	128k 一个IAP占用8K,配置占用4K，剩下两个程序是116K，一个是58K的大小。
+	去掉shell后代码只有27，还剩下大概30K的shell内存可以用
+	
+//rtthread
+struct fiber_node
+{
+	rt_int8_t index;
+	rt_uint8_t name[16];
+	rt_slist_t list;
+};
+
+rt_slist_t list_head;
+rt_slist_t *slist_temp;
+
+struct fiber_node gtx1;
+struct fiber_node *fiber_temp;
+
+rt_slist_init(&list_head);
+rt_slist_append(&list_head, &gtx1.list);
+
+rt_slist_for_each(slist_temp, &list_head)
+{
+	fiber_temp = rt_slist_entry(slist_temp, struct fiber_node, list);
+}
+
+char buf[32];
+snprintf(buf, sizeof(buf), "%f", f);
+
+rt_weak int rt_vsnprintf(char *buf, rt_size_t size, const char *fmt, va_list args)
+int rt_snprintf(char *buf, rt_size_t size, const char *fmt, ...)
+int rt_vsprintf(char *buf, const char *format, va_list arg_ptr)
+int rt_sprintf(char *buf, const char *format, ...)
+
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+

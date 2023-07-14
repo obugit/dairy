@@ -1,0 +1,432 @@
+主要是1860,8811,8910,8916这几个平台的驱动
+
+对文件读写是最基本的，现在的很多操作就是基于文件的，所以3 5 6弄好其实可以解决很多很多问题了
+第几个item的第几s_pos的第几个q_pos
+然后分配一个结构出来使用
+ 使用 strace 工具来监视程序发出的系
+统调用以及它们的返回值. 跟踪一个 cp 或者一个 ls -l > /dev/scull0 展示了量子化的
+读和写. 监视(以及调试)或者采用dd来弄也可以
+第三章只是简单的open release(close) write read实现而已
+第五章：让驱动不奔溃
+if (!dptr->data[s_pos])
+{ 
+    dptr->data[s_pos] = kmalloc(quantum, GFP_KERNEL); 
+    if (!dptr->data[s_pos]) 
+    goto out; 
+}
+竞态产生的条件：
+多个用户空间进程在运行, 它们可能以令人惊讶的方式组合存取你的代码
+SMP 系统能够同时在不同处理器上执行你的代码. 内核代码是可抢占的
+设备中断是能够导致你的代码并发执行的异步事件
+内核也提供各种延迟代码执行的机制, 例如 workqueue, tasklet, 以及定时器
+事实是, 然而, 这样的共享常常是需要的. 硬件资源是, 由于它们的特性, 共享的, 软件
+资源也必须常常共享给多个线程. 也要记住全局变量远远不是共享数据的唯一方式; 任何
+时候你的代码传递一个指针给内核的其他部分, 潜在地它创造了一个新的共享情形. 共享
+是生活的事实
+（1）信号量与互斥锁
+DECLARE_MUTEX(name); 
+DECLARE_MUTEX_LOCKED(name);
+void init_MUTEX(struct semaphore *sem); 
+void init_MUTEX_LOCKED(struct semaphore *sem);
+void down(struct semaphore *sem); 
+int down_interruptible(struct semaphore *sem); 
+int down_trylock(struct semaphore *sem);
+void up(struct semaphore *sem);
+读写，并且在异常处理中使用好信号量
+void init_rwsem(struct rw_semaphore *sem);
+void down_read(struct rw_semaphore *sem); 
+int down_read_trylock(struct rw_semaphore *sem); 
+void up_read(struct rw_semaphore *sem);
+void down_write(struct rw_semaphore *sem); 
+int down_write_trylock(struct rw_semaphore *sem); 
+void up_write(struct rw_semaphore *sem); 
+void downgrade_write(struct rw_semaphore *sem);
+down (2)完成后up，反过来如果等待完成，然后一个完成会不会逻辑比较顺畅
+completions机制：
+struct semaphore sem; 
+init_MUTEX_LOCKED(&sem);
+start_external_task(&sem);
+down(&sem);
+外部任务可以接着调用 up(??sem), 在它的工作完成时
+（2）完成机制
+DECLARE_COMPLETION(my_completion);
+struct completion my_completion;
+/* ... */
+init_completion(&my_completion);
+void wait_for_completion(struct completion *c);
+void complete(struct completion *c);
+void complete_all(struct completion *c);
+（3）自旋锁
+spinlock_t my_lock = SPIN_LOCK_UNLOCKED;
+void spin_lock_init(spinlock_t *lock);
+void spin_lock(spinlock_t *lock); 
+void spin_lock_irqsave(spinlock_t *lock, unsigned long flags); 
+void spin_lock_irq(spinlock_t *lock); 
+void spin_lock_bh(spinlock_t *lock)
+void spin_lock(spinlock_t *lock);
+void spin_unlock(spinlock_t *lock);
+void spin_unlock(spinlock_t *lock); 
+void spin_unlock_irqrestore(spinlock_t *lock, unsigned long flags); 
+void spin_unlock_irq(spinlock_t *lock); 
+void spin_unlock_bh(spinlock_t *lock);
+int spin_trylock(spinlock_t *lock); 
+int spin_trylock_bh(spinlock_t *lock);
+rwlock_t my_rwlock = RW_LOCK_UNLOCKED; /* Static way */ 
+rwlock_t my_rwlock; 
+rwlock_init(&my_rwlock); /* Dynamic way */
+void read_lock(rwlock_t *lock); 
+void read_lock_irqsave(rwlock_t *lock, unsigned long flags); 
+void read_lock_irq(rwlock_t *lock); 
+void read_lock_bh(rwlock_t *lock); 
+void read_unlock(rwlock_t *lock); 
+void read_unlock_irqrestore(rwlock_t *lock, unsigned long flags); 
+void read_unlock_irq(rwlock_t *lock); 
+void read_unlock_bh(rwlock_t *lock);
+void write_lock(rwlock_t *lock); 
+void write_lock_irqsave(rwlock_t *lock, unsigned long flags); 
+void write_lock_irq(rwlock_t *lock); 
+void write_lock_bh(rwlock_t *lock); 
+int write_trylock(rwlock_t *lock); 
+void write_unlock(rwlock_t *lock); 
+void write_unlock_irqrestore(rwlock_t *lock, unsigned long flags); 
+void write_unlock_irq(rwlock_t *lock); 
+void write_unlock_bh(rwlock_t *lock);
+（4）原子变量，位操作，seqlock锁
+
+第六章:让驱动除了读写跟不奔溃，有其它功能，类似现在读写的自组网驱动，天通，lte，北斗驱动，都是可以阻塞，可以用poll，select来进行读写的驱动
+ioctl实现：int ioctl(int fd, unsigned long cmd, ...);
+int (*ioctl) (struct inode *inode, struct file *filp, unsigned int cmd, unsigned long arg);
+上家公司的基本大部分控制，特别是gpio等部分的控制，都是坐在ioctl中的，用户只是简单的调用ioctl命令就控制下面的设备了，使用ioctl来改变各种各样的驱动属性，配置驱动的各种工作模式
+#define SCULL_IOCSQUANTUM _IOW(SCULL_IOC_MAGIC, 1, int) 
+#define SCULL_IOCSQSET _IOW(SCULL_IOC_MAGIC, 2, int) 
+#define SCULL_IOCTQUANTUM _IO(SCULL_IOC_MAGIC, 3) 
+#define SCULL_IOCTQSET _IO(SCULL_IOC_MAGIC, 4) 
+#define SCULL_IOCGQUANTUM _IOR(SCULL_IOC_MAGIC, 5, int) 
+#define SCULL_IOCGQSET _IOR(SCULL_IOC_MAGIC, 6, int) 
+#define SCULL_IOCQQUANTUM _IO(SCULL_IOC_MAGIC, 7) 
+#define SCULL_IOCQQSET _IO(SCULL_IOC_MAGIC, 8) 
+#define SCULL_IOCXQUANTUM _IOWR(SCULL_IOC_MAGIC, 9, int) 
+#define SCULL_IOCXQSET _IOWR(SCULL_IOC_MAGIC,10, int) 
+#define SCULL_IOCHQUANTUM _IO(SCULL_IOC_MAGIC, 11) 
+#define SCULL_IOCHQSET _IO(SCULL_IOC_MAGIC, 12)
+#define SCULL_IOC_MAXNR 14
+（2）阻塞I/O，先弄清楚scullpipe，也就是更全面的修改好read跟write
+读的时候还没数据到来等待
+写的时候缓冲区已经满了要等待
+驱动要阻塞进程（使进程从调度器的运行队列中去除），使它睡眠直到请求可继续
+睡眠的时候：
+是你的驱动在持有一个自旋锁, seqlock, 或者 RCU 锁时
+不能睡眠. 如果你已关闭中断你也不能睡眠. 在持有一个旗标时睡眠是合法的, 但是你应
+当仔细查看这样做的任何代码. 如果代码在持有一个旗标时睡眠, 任何其他的等待这个旗
+标的线程也睡眠. 因此发生在持有旗标时的任何睡眠应当短暂, 并且你应当说服自己, 由
+于持有这个旗标, 你不能阻塞这个将最终唤醒你的进程
+醒来的时候：
+当你醒来, 你从不知道你的进程离开 CPU 多长时间或者同时已
+经发生了什么改变. 你也常常不知道是否另一个进程已经睡眠等待同一个事件; 那个进程
+可能在你之前醒来并且获取了你在等待的资源. 结果是你不能关于你醒后的系统状态做任
+何的假设, 并且你必须检查来确保你在等待的条件是, 确实, 真的.
+被谁唤醒：
+一个另外的相关的点, 当然, 是你的进程不能睡眠除非确信其他人, 在某处的, 将唤醒它. 
+做唤醒工作的代码必须也能够找到你的进程来做它的工作. 确保一个唤醒发生, 是深入考
+虑你的代码和对于每次睡眠, 确切知道什么系列的事件将结束那次睡眠. 使你的进程可能
+被找到, 真正地, 通过一个称为等待队列的数据结构实现的. 一个等待队列就是它听起来
+的样子:一个进程列表, 都等待一个特定的事件.
+DECLARE_WAIT_QUEUE_HEAD(name);
+wait_queue_head_t my_queue; 
+init_waitqueue_head(&my_queue);
+wait_event(有几个变体); 它结合了处理睡眠的细节和
+进程在等待的条件的检查. wait_event 的形式是:
+wait_event(queue, condition) 
+wait_event_interruptible(queue, condition) 
+wait_event_timeout(queue, condition, timeout) 
+wait_event_interruptible_timeout(queue, condition, timeout)
+void wake_up(wait_queue_head_t *queue); 
+void wake_up_interruptible(wait_queue_head_t *queue);
+wait_event_interruptible(wq, flag != 0);等待flag!=0的时候醒来，也就是一个唤醒动作，一个检测动作
+处理同时唤醒导致的问题？
+非阻塞操作：
+O_NONBLOCK O_NDELAY
+这 2 句都假定有输入和输出缓冲，还有设置一个缓冲区来进行读写的作用
+使用 O_NONBLOCK必须每次都检查 errno
+read write open受到非阻塞影响
+建立进程列表，将需要休眠的进程添加到列表中，需要唤醒的时候将进程从列表中移除
+void set_current_state(int new_state);
+current->state = TASK_INTERRUPTIBLE;
+if (!condition) 
+ schedule();
+（3）poll的实现，用来实现select poll epoll等操作
+（4）llseek实现，用来实现设备的移位
+
+反观现在弄的驱动，来对应这些书籍来看
+然后再整合上次在公司弄的一些尝试跟使用方法，就可以各种折腾了
+然后再整合这家公司的一些驱动，然后就可以各种折腾了
+而且，目录还要再变化一下，类似重新建立一个调试目录，内存使用目录，字符使用目录......
+从uboot中找到kernel内存打印的地址，然后直接的uboot中查看
+
+######################################################################################################
+系统编译方法：
+source ./build/envsetup.sh
+lunch 17 17. full_cx1881evb_arm64-userdebug
+make update-api  //首次编译使用
+mmm leadcore/prebuilt/lib
+mmm leadcore/service/emsd
+make -j4
+
+
+######################################################################################################
+20230618
+基本思想，先将这个给整理出一个驱动来，然后在里面添加东西
+struct dtsled_dev{
+	dev_t devid;		
+	struct cdev cdev;	
+	struct class *class;	
+	struct device *device;	
+	int major;				
+	int minor;			
+	struct device_node	*nd; 
+};
+
+struct xc7a50t {
+    struct device *dev;
+    struct xc7a50t_data *pdata;//数据用来保存解析dtb的数据
+	
+    struct mutex lock;
+    struct delayed_work dwork;
+    const struct firmware *firmware;
+    int status;
+    bool is_master;
+    int clk_gpio_addr;
+    int clk_gpio_shift;
+    int data_gpio_addr[8];
+    int data_gpio_shift[8];
+    struct pinctrl *pinctrl;
+    struct pinctrl_state *fpga_mode;
+};
+
+struct dc_uart_arg
+{
+	rt_device_t uart_test_device;
+	void *data;	//数据从外部传进来的，rtthread是否也使用dtb来进行配置
+	
+	rt_mailbox_t do_mailbox;
+	rt_timer_t uart_report_timer;
+
+}__attribute__((packed));
+typedef struct dc_uart_arg dc_uart_arg_t;
+
+逻辑都是一样的，都是先申请一块dc_uart_arg，dtsled_dev，xc7a50t，然后再创建里面用到的设备，然后获取设备数据，以及各种相关的控制机制
+区别在于rtt是直接就是驱动跟设备一体的，数据通过里面函数传递，linux是设备跟驱动分开的，通过设备树传递
+struct device *dev = &pdev->dev;
+pdev->dev.of_node，如果设备树存在，将设备树解析成data放到来
+dev->node
+1、创建抽象，首先就是创建dev等，这里创建必须足够好，里面各种结构
+dev lock timer list......
+
+2、获取或者创建数据，之前判断数据在不在
+（1）dev pdata以及通过pdev->dev.of_node来解析设备树
+platform_set_drvdata
+pdev->dev.platform_data = pdata;
+（2）gpio pinctrl
+（3）firmwarte等
+of_gpio_named_count(np, "data");
+of_get_named_gpio(np, "data", i);
+devm_pinctrl_get
+pinctrl_lookup_state
+（4）初步进行初始化，将platform的dev给定义的结构，这样子dev可以找到platform，将结构给platform的数据，这样子platform可以找到结构
+
+
+3、进行初始化
+电源时钟中断定时器
+信号量 spin rwlock complete，你写的那些很多驱动读写都是没有加锁的，这个问题比较大
+创建邮箱 数据队列，工作队列，wait，延时队列
+穿件attr proc debugfs等
+INIT_DEFERRABLE_WORK(&xc7a50t_ptr->dwork, xc7a50t_startup_fw_update_work);
+4、进行控制
+先整理控制一下内存读写，物理内存读写，包括mmap以及mem设备跟简单的platform操作
+//大致先整理一个出来
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29))
+/*
+ * Use this if you want to use the same suspend and resume callbacks for suspend
+ * to RAM and hibernation.
+ */
+#define SIMPLE_DEV_PM_OPS(name, suspend_fn, resume_fn) \
+struct dev_pm_ops name = { \
+    .suspend = suspend_fn, \
+    .resume = resume_fn, \
+    .freeze = suspend_fn, \
+    .thaw = resume_fn, \
+    .poweroff = suspend_fn, \
+    .restore = resume_fn, \
+}
+#else
+#define SIMPLE_DEV_PM_OPS(name, suspend_fn, resume_fn)
+#endif /* >= 2.6.29 */
+static SIMPLE_DEV_PM_OPS(w1_gpio_pm_ops, w1_gpio_suspend, w1_gpio_resume);
+ 
+static struct platform_driver w1_gpio_driver = {
+    .driver = {
+        .name   = "w1-gpio",
+        .pm = &w1_gpio_pm_ops,
+        .of_match_table = of_match_ptr(w1_gpio_dt_ids),
+    },
+    .probe = w1_gpio_probe,
+    .remove = w1_gpio_remove,
+};
+
+
+devm_gpiod_get_index
+devm_gpiod_get_index_optional 
+ 
+1-wire
+64bitrom
+16bit十进制地址编码
+收发控制和电源存储电路，耗电量很小空闲时为几微瓦，从总线上馈送电能到大电容就可以工作
+一根线传输时钟又传输数据，而且数据传输是双向的，速率一般是16.3kbit/s，最大可达142kbit/s，通长采用100Kbit/s以下的速率
+单总线端口一般为漏极开路构或者三态门端口，上拉阻值一般是5-10kΩ
+过程
+（1）初始化单总线器件
+（2）识别单总线
+（3）交换数据
+初始化，ROM命令，功能命令
+
+############################################################################################################
+补全芯片手册，然后一个一个慢慢看吧
+终端		1860
+终端		8811（包括前三批跟正样后最新的）
+特战		8811
+增量		8811
+增二		8910
+报话器		8916
+fpga驱动----模拟spi
+ds2781驱动--单总线
+
+现在弄的驱动都是放在/mnt/leafly/code/src/driver/code中
+主要是学习里面大学弄过的那些代码，改改，用起来，从这个角度看比从别的板子更加方便很多
+原理图跟pcb跟数据手册先整理出来先，然后再继续弄代码相关的
+
+然后快速添加一个驱动，直接拷贝一份，然后修改里面外面的Kconfig跟Makefile
+vim使用替换的方法:
+:%s/str1/str2/g  全文档
+:s/str1/str2/g  当前行所有
+:s/str1/str2/  当前行第一个
+%s/multimode_pm/mem_dbg/g
+先全部替换一下先
+:%s/multimode_pm/mem_dbg/g
+一般来说是同时注册两部分
+platform_device_register(&list_device);	
+platform_driver_register(&list_driver);
+这边没注册直接就调用probe
+然后将数据直接向两边进行指向，然后开始写功能性代码
+将platform的dev给定义的结构，这样子结构通过dev可以找到platform，将结构给platform的数据，这样子platform可以找到结构
+#define platform_driver_probe(drv, probe) \
+    __platform_driver_probe(drv, probe, THIS_MODULE)
+extern int __platform_driver_probe(struct platform_driver *driver,
+        int (*probe)(struct platform_device *), struct module *module);
+return platform_driver_probe(&mem_dbg_driver, mem_dbg_probe);
+通过dev来找到platform，来找到结构，通过platform来找到dev找到结构，通过结构来找到dev跟platform
+
+4、功能性代码
+先修改dts跟.c，然后进行编译
+[root@leafly-arch linux-4.19.87]# make modules
+  CALL    scripts/checksyscalls.sh
+  Building modules, stage 2.
+  MODPOST 4 modules
+[root@leafly-arch linux-4.19.87]# make dtbs
+  CALL    scripts/checksyscalls.sh
+  DTC     arch/arm/boot/dts/morningcore/cx8916_bhq.dtb
+设备树，在用字符驱动时候也可以查找访问，而不用使用of_match_table来进行匹配
+调试方法直接擦除烧写分区跟使用.ko会方便很多
+还可以在里面创建各种符号链接
+烧个内核就起不来了，这儿启动过程还需要跟一下，调试用0424的版本来调，不然/system都没法正常挂载
+insmod: can't read 'mem': No such file or directory
+设备树编译完后要拷贝过去才行
+cp -rf arch/arm/boot/dts/morningcore/cx8916_bhq.dtb arch/arm/boot/cx8916_bhq.dtb
+cp -rf arch/arm/boot/zImage arch/arm/boot/cx8916_bhq_kernel.bin
+
+adb push \\192.168.42.78\mnt\8916\linux-4.19.87\arch\arm\boot\cx8916_bhq.dtb /system/bak
+adb push \\192.168.42.78\mnt\8916\linux-4.19.87\arch\arm\boot\cx8916_bhq_kernel.bin /system/bak
+adb push \\192.168.42.78\mnt\8916\linux-4.19.87\drivers\comip\mem_debug\mem_debug.ko /system/bak
+
+dd if=/system/bak/cx8916_bhq.dtb of=/dev/mmcblk0p2
+dd if=/system/bak/cx8916_bhq_kernel.bin of=/dev/mmcblk0p4 
+
+lc1861-pinctrl e4509000.pinctrl: pin gpio175 already requested by 0.soc:multimode-pm; cannot claim for 0.soc:mem-dbg
+解析设备树 pinctrl 中断 时钟 dma等
+AP_SSI0	23	55
+//获取寄存器资源
+//放置一块资源进去然后读取出来
+r = platform_get_resource_byname(pdev,
+        IORESOURCE_MEM, "ssi");
+if (!r){
+    dev_err(&pdev->dev, "Invalid spi mem.\n");
+    return -ENXIO;
+}
+
+r1 = platform_get_resource_byname(pdev,
+        IORESOURCE_MEM, "ap_ctrl");
+if (!r1){
+    dev_err(&pdev->dev, "Invalid ap_ctrl men.\n");
+    return -ENXIO;
+}
+
+r = request_mem_region(r->start, r->end - r->start + 1, r->name);
+if (!r){
+    dev_err(&pdev->dev, "Invalid spi request_mem.\n");
+    return -EBUSY;
+}
+pdata->ssi_mode_base = ioremap(r1->start,1);
+
+irq = platform_get_irq(pdev, 0);
+if ( irq < 0){
+    dev_err(&pdev->dev, "Invalid spi irq.\n");
+    return -ENXIO;
+}
+设备树配置的地址，中断不需要自己解析然后是在probe时候自己传递到platform的
+中断，不采用request，而是直接使用platform_get_resource(dev, IORESOURCE_IRQ, num)来获取中断
+ssi->clk = clk_get(&pdev->dev, "ssi_clk");
+if (IS_ERR(ssi->clk)) {
+    ret = PTR_ERR(ssi->clk);
+    ssi->clk = NULL;
+    dev_err(&pdev->dev, "cannot get ssi clk\n");
+    goto out_clk;
+}
+
+ssi->pclk = clk_get(&pdev->dev, "ssi_pclkgt");
+if (IS_ERR(ssi->pclk)) {
+    ret = PTR_ERR(ssi->pclk);
+    ssi->pclk = NULL;
+    dev_err(&pdev->dev, "cannot get ssi pclk\n");
+    goto out_clk;
+}
+
+ret = clk_set_rate(ssi->clk, ssi_clk_src_rate);
+ssi->clk_input = clk_get_rate(ssi->clk);
+ssi->pclk_input = clk_get_rate(ssi->pclk);
+
+设备树bool型可以空白
+总线，地址映射，中断，时钟
+26M+/-10PPM
+static const struct of_device_id comip_of_match[] = {
+    { .compatible = "comip,ap_pwr_clks", .data = (void *)COMIP_APPWR, },
+    { .compatible = "comip,ddr_pwr_clks", .data = (void *)COMIP_DDRPWR, },
+};
+
+//5338时钟配置
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
